@@ -15,7 +15,7 @@ add_vinyl = st.Page(
     'src/views/add_vinyl.py', title='Incluir novo disco', icon='➕'
 )
 
-st.set_page_config(layout="wide", page_title="Discos de vinil da Bruna", page_icon="📚")
+st.set_page_config(layout="wide", page_title="Discos de vinil da Bruna", page_icon="💿")
 
 users = get_all_users().to_dict()
 
