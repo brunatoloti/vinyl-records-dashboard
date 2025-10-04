@@ -10,11 +10,15 @@ def get_all_users():
 def get_collection_catalog():
     conn = st.connection('gsheets', type=GSheetsConnection)
     result = conn.query('SELECT * FROM collection_catalog;')
+    result = result.astype(dtype={'duration': int, 'qt_lps': int,
+                                  'release_year': int, 'compilation': bool})
     return result
 
 def get_wishlist():
     conn = st.connection('gsheets', type=GSheetsConnection)
     result = conn.query('SELECT * FROM wishlist;')
+    result = result.astype(dtype={'duration': int, 'qt_lps': int,
+                                  'release_year': int, 'compilation': bool})
     return result
 
 def insert_record_in_collection_and_remove_from_wishlist(new_collection, remove_wishlist):
