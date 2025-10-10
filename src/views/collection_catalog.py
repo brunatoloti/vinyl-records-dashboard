@@ -8,11 +8,14 @@ from src.db import get_collection_catalog, get_all_countries
 df = get_collection_catalog()
 df['year'] = df['entry_date'].apply(lambda x: x.split('/')[-1])
 
+df_bruna = df[df['heritage'] == 0]
+df_heritage = df[df['heritage'] == 1]
+
 st.title('Coleção de discos')
 
 tab1, tab2 = st.tabs(["💿 Catálogo", "📈 Métricas"])
 
-with tab1:
+def vinyl_display(df):
     cols_per_row = 4
     for i in range(0, len(df), cols_per_row):
         cols = st.columns(cols_per_row)
@@ -21,6 +24,13 @@ with tab1:
                 st.image(row["image_cover"], use_container_width=True)
                 st.markdown(f"**{row['name']}**")
                 st.caption(f"{row['artist']} • {int(row['release_year'])} • {int(row['duration'])} min")
+
+with tab1:
+    vinyl_display(df_bruna)
+    st.divider()
+    st.subheader('Discos herdados do meu pai 🖤')
+    vinyl_display(df_heritage)
+
 with tab2:
     col_indicator = st.columns(5)
     with col_indicator[0]:
@@ -28,7 +38,7 @@ with tab2:
     with col_indicator[1]:
         st.metric(label='🧑‍🎤 Quantidade de músicos/bandas', value=df.drop_duplicates(subset=['artist']).shape[0])
     with col_indicator[2]:
-        st.metric(label='🗓️ Mediana do ano de lançamento', value=int(df.release_year.median()))
+        st.metric(label='🖤 Quantidade de discos herdados', value=int(df.heritage.sum()))
     with col_indicator[3]:
         st.metric(label='⭐ Quantidade de discos usados', value=int(df.used.sum()))
     with col_indicator[4]:
@@ -105,6 +115,32 @@ with tab2:
     chart2.update_xaxes(title_text='')
     st.plotly_chart(chart2)
 
+    counting = df.groupby('release_year').agg(
+            records = ('name', lambda x: '<br>'.join(sorted(x))),
+            count = ('name', 'count')
+        ).reset_index()
+    chart8 = px.scatter(
+        counting,
+        x="release_year",
+        y="count",
+        title="Quantidade de discos por ano de lançamento",
+        labels={"release_year": "Ano de Lançamento", "count": "Quantidade"},
+        hover_data={"records": True, "release_year": True, "count": True},
+    )
+
+    chart8.update_traces(
+        textposition="top center", marker=dict(size=12, color="#FF4B4B"),
+        hovertemplate="<b>Ano %{x}</b><br><b>Quantidade:</b> %{y}<br><b>Discos:</b> <br>%{customdata[0]}<extra></extra>"
+        )
+    chart8.update_layout(
+        xaxis=dict(dtick=1),
+        template="plotly_white",
+        title_font_size=20,
+    )
+    chart8.update_yaxes(title_text='')
+    chart8.update_xaxes(title_text='')
+    st.plotly_chart(chart8)
+
     col1, col2 = st.columns([1, 1])
 
     with col1:
@@ -128,18 +164,21 @@ with tab2:
         chart4.update_xaxes(title_text='')
         st.plotly_chart(chart4)
 
-        # Pie chart (oh no!!! But we only have two categories)
         count_finished_books_by_new_reading = df['purchase_type'].value_counts().reset_index()
         count_finished_books_by_new_reading.columns = ['purchase_type', 'Qtd']
-        chart7 = px.pie(count_finished_books_by_new_reading, names='purchase_type', values='Qtd',
-                        hole=0.5, title='Quantidade de discos por tipo de compra', color_discrete_sequence=["#CF7C7C","#FF4B4B"])
-        chart7.update_traces(textinfo='value',
-                            hovertemplate =
-                                "<b>%{label}</b><br>" +
-                                "Quantidade de discos: %{value}<br>" +
-                                "<extra></extra>",
-                            textfont_color='#d6d7dd')
-        chart7.update_layout(showlegend=True)
+        chart7 = px.bar(count_finished_books_by_new_reading, x='purchase_type', y="Qtd", orientation='v',
+                        height=400,
+                        title='Quantidade de discos por tipo de compra', color_discrete_sequence=["#CF7C7C"],
+                        text='Qtd')
+        chart7.update_traces(
+            hovertemplate =
+                        "<b>%{x}</b><br>" +
+                        "Quantidade: %{y}<br>" +
+                        "<extra></extra>",
+            textfont_color='#d6d7dd'
+        )
+        chart7.update_yaxes(title_text='')
+        chart7.update_xaxes(title_text='')
         st.plotly_chart(chart7)
 
     with col2:
@@ -173,4 +212,3 @@ with tab2:
         chart6.update_yaxes(title_text='')
         chart6.update_xaxes(title_text='')
         st.plotly_chart(chart6)
-    
