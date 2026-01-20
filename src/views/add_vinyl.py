@@ -13,7 +13,7 @@ col1, col2 = st.columns([1, 1])
 with col1:
     with st.expander('Adicionar vinil na coleção'):
         boolean_options = ['Sim', 'Não']
-        purchase_type_options = ['Site', 'Feira']
+        purchase_type_options = ['Site', 'Feira', 'Loja física']
         new_record_is_in_wishlist = st.radio('É um disco presente na lista de desejos?', ['Não', 'Sim'], horizontal=True)
         record_name_value, artist_name_value, country_value, image_cover_value, duration_value, qt_lps_value, release_year_value, compilation_value = None, None, None, None, None, None, None, None 
         show_form = False

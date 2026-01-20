@@ -4,4 +4,4 @@ pandas
 st-gsheets-connection
 plotly
 plotly-calplot
-wordcloud
+wordcloud==1.9.4
