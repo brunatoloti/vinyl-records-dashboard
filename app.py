@@ -11,9 +11,6 @@ collection_catalog = st.Page(
 wishlist = st.Page(
     'src/views/wishlist.py', title='Lista de desejos', icon='🎁'
 )
-add_vinyl = st.Page(
-    'src/views/add_vinyl.py', title='Incluir novo disco', icon='➕'
-)
 
 st.set_page_config(layout="wide", page_title="Discos de vinil da Bruna", page_icon="💿")
 
@@ -31,6 +28,8 @@ authenticator = stauth.Authenticate(credentials, "reading_dashboard_bru", "abcde
 authenticator.login("main", "Login", fields={'Form name': 'Login', 'Username': 'Usuário', 'Password': 'Senha', 'Login': 'Entrar'})
 authentication_status = st.session_state['authentication_status']
 st.session_state["authenticator"] = authenticator
+if "release_groups_cache" not in st.session_state:
+    st.session_state.release_groups_cache = {}
 
 if authentication_status == False:
     st.error("Usuário/senha está incorreto")
@@ -40,14 +39,9 @@ if authentication_status == None:
 
 if authentication_status:
     authenticator.logout("Sair", "sidebar")
-    if st.session_state.username == 'brunat':
-        pg = st.navigation(
-            pages=[collection_catalog, wishlist, add_vinyl]
-        )
-    else:
-        pg = st.navigation(
-            pages=[collection_catalog, wishlist]
-        )
+    pg = st.navigation(
+        pages=[collection_catalog, wishlist]
+    )
     pg.run()
 else:
     pg = st.navigation(

@@ -4,9 +4,32 @@ import pandas as pd
 from plotly_calplot import calplot
 import plotly.express as px
 import streamlit as st
+import streamlit.components.v1 as components
 from wordcloud import WordCloud
 
-from src.db import get_collection_catalog, get_all_countries
+from src.db import get_collection_catalog, get_all_countries, get_wishlist, insert_record_in_collection_and_remove_from_wishlist
+from src.utils import VinylRecordsDashUtilities
+
+
+def search_release_groups_catalog(artist_name):
+    normalized_artist = artist_name.strip().casefold()
+    cached_result = st.session_state.release_groups_cache.get(normalized_artist)
+
+    if cached_result is not None:
+        return cached_result
+
+    result = VinylRecordsDashUtilities({"artist_name": normalized_artist}).get_release_group()
+    st.session_state.release_groups_cache[normalized_artist] = result
+    return result
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def search_album_details_catalog(artist_name, release_group_id):
+    data = {
+        "artist_name": artist_name,
+        "release_group_id": release_group_id
+    }
+    return VinylRecordsDashUtilities(data).get_album_details()
 
 df = get_collection_catalog()
 df['year'] = df['entry_date'].apply(lambda x: x.split('/')[-1])
@@ -16,7 +39,7 @@ df_heritage = df[df['heritage'] == 1]
 
 st.title('Coleção de discos')
 
-tab1, tab2 = st.tabs(["💿 Catálogo", "📈 Métricas"])
+tab1, tab2, tab3 = st.tabs(["💿 Catálogo", "📈 Métricas", "➕ Adicionar novo disco"])
 
 def vinyl_display(df):
     cols_per_row = 4
@@ -24,7 +47,7 @@ def vinyl_display(df):
         cols = st.columns(cols_per_row)
         for col, (_, row) in zip(cols, df.iloc[i:i+cols_per_row].iterrows()):
             with col:
-                st.image(row["image_cover"], use_container_width=True)
+                st.image(row["image_cover"], width='stretch')
                 st.markdown(f"**{row['name']}**")
                 st.caption(f"{row['artist']} • {int(row['release_year'])} • {int(row['duration'])} min")
 
@@ -304,23 +327,35 @@ with tab2:
         chart6.update_xaxes(title_text='')
         st.plotly_chart(chart6)
 
-    entry_by_date = result[['name', 'entry_date', 'year']].sort_values('year')
-    entry_by_date = entry_by_date.groupby(['year', 'entry_date']).agg(
-        records = ('name', lambda x: '<br>'.join(sorted(x))),
-        QtDiscos = ('name', 'count')
-    ).reset_index(drop=False)
-    entry_by_date['entry_date'] = pd.to_datetime(entry_by_date['entry_date'], format='%d/%m/%Y').dt.date
-    entry_by_date['year'] = pd.to_datetime(entry_by_date['year']).dt.year
-    entry_by_date = entry_by_date.set_index('entry_date')
-    entry_by_date = entry_by_date.reindex(pd.date_range(f'01/01/{entry_by_date.index.min().year}',
-                                                        datetime.today().strftime('%m/%d/%Y')))
-    entry_by_date = entry_by_date.fillna({
-        'QtDiscos': 0,
-        'records': ''
-    })
-    entry_by_date = entry_by_date.reset_index(drop=False).rename(columns={'index': 'entry_date'})
-    chart9 = calplot(entry_by_date, x='entry_date', y='QtDiscos',
-                     cmap_min=0, cmap_max=5, name='Quantidade', colorscale='reds')
+    entry_by_date = result[['name', 'entry_date']].copy()
+    entry_by_date['entry_date'] = pd.to_datetime(entry_by_date['entry_date'], format='%d/%m/%Y', errors='coerce')
+    entry_by_date = entry_by_date.dropna(subset=['entry_date'])
+    entry_by_date = (
+        entry_by_date.groupby('entry_date').agg(
+                records=(
+                    'name',
+                    lambda values: '<br>'.join(
+                        sorted(values.dropna().astype(str))
+                    )
+                ),
+                QtDiscos=('name', 'count')
+            ).reset_index())
+    start_date = pd.Timestamp(year=entry_by_date['entry_date'].min().year, month=1, day=1)
+    end_date = pd.Timestamp.today().normalize()
+    entry_by_date = entry_by_date.set_index('entry_date').reindex(pd.date_range(start_date, end_date, freq='D')).rename_axis('entry_date').reset_index()
+    entry_by_date['QtDiscos'] = entry_by_date['QtDiscos'].fillna(0).astype(int)
+    entry_by_date['records'] = entry_by_date['records'].fillna('')
+    entry_by_date['year'] = entry_by_date['entry_date'].dt.year
+    entry_by_date['entry_date'] = entry_by_date['entry_date'].to_numpy(dtype='datetime64[ns]')
+    chart9 = calplot(
+        entry_by_date.copy(),
+        x='entry_date',
+        y='QtDiscos',
+        cmap_min=0,
+        cmap_max=5,
+        name='Quantidade',
+        colorscale='reds'
+    )
     for trace in chart9.data:
         if trace.type == "heatmap":
             trace.hovertemplate = (
@@ -339,3 +374,121 @@ with tab2:
         j = j + 1
     chart9.update_layout(dd)
     st.plotly_chart(chart9)
+
+with tab3:
+    if st.session_state.username == 'brunat':
+        collection_catalog = get_collection_catalog()
+        wishlist = get_wishlist()
+        countries_options = list(get_all_countries()['value'].unique())
+        boolean_options = ['Sim', 'Não']
+        purchase_type_options = ['Site', 'Feira', 'Loja física']
+        new_record_is_in_wishlist = st.radio('É um disco presente na lista de desejos?', ['Não', 'Sim'], horizontal=True)
+        record_name_value, artist_name_value, country_value, image_cover_value, duration_value, qt_lps_value, release_year_value, compilation_value = None, None, None, None, None, None, None, None 
+        show_form = False
+        if new_record_is_in_wishlist == 'Sim':
+            record_name_value = st.selectbox('Qual o disco?', options=list(wishlist['name']), index=None, placeholder='Escolha uma opção')
+            if record_name_value:
+                artist_name_value = wishlist[wishlist['name'] == record_name_value].iloc[0]['artist']
+                country_value = wishlist[wishlist['name'] == record_name_value].iloc[0]['country']
+                image_cover_value = wishlist[wishlist['name'] == record_name_value].iloc[0]['image_cover']
+                duration_value = wishlist[wishlist['name'] == record_name_value].iloc[0]['duration']
+                qt_lps_value = wishlist[wishlist['name'] == record_name_value].iloc[0]['qt_lps']
+                release_year_value = wishlist[wishlist['name'] == record_name_value].iloc[0]['release_year']
+                compilation_value = 'Sim' if wishlist[wishlist['name'] == record_name_value].iloc[0]['compilation'] else 'Não'
+                show_form = True
+        else:
+            show_form = True
+        if show_form:
+            if new_record_is_in_wishlist == 'Não':
+                artist_name = st.text_input(label='Nome do artista ou banda')
+                show_records = False
+                show_form = False
+                if artist_name:
+                    search_release_group = search_release_groups_catalog(artist_name)
+                    record_name_value = [t['title'] for t in search_release_group]
+                    if record_name_value != ['None'] and record_name_value != [None]:
+                        record_name = st.selectbox(label='Nome do álbum', options=record_name_value, index=None, accept_new_options=True)
+                        if record_name != 'None' and record_name != None:
+                            record_infos1 = [ri for ri in search_release_group if ri['title'] == record_name][0]
+                            record_infos2 = search_album_details_catalog(artist_name, record_infos1["id"])
+                            record_details = record_infos1 | record_infos2
+                            if record_details['duration']:
+                                duration_value = record_details['duration'].split(':')[0]
+                            qt_lps_value = record_details['discs_quantity']
+                            release_year_value = record_details['release_date']
+                            compilation_value = 'Sim' if 'Compilation' in record_details['secondary_types'] else 'Não'
+                            image_cover_value = record_details['image_cover']
+                            show_form = True
+                            tt = False
+                    else:
+                        show_form = True
+                        tt = True
+            if show_form:
+                with st.form(key='new_vinyl_in_collection'):
+                    if new_record_is_in_wishlist == 'Não' and tt:
+                        record_name = st.text_input(label='Nome do álbum')
+                    duration = st.text_input(label='Duração', value=duration_value)
+                    qt_lps = st.text_input(label='Quantidade de LPs', value=qt_lps_value)
+                    release_year = st.text_input(label='Ano de lançamento', value=release_year_value)
+                    image_cover = st.text_input(label='Link da imagem da capa', value=image_cover_value)
+                    if new_record_is_in_wishlist == 'Não':
+                        country = st.selectbox('País', options=countries_options, index=None, placeholder='Escolha uma opção')
+                        compilation = st.selectbox('O disco é uma coletânea?', options=boolean_options, index=None, placeholder='Escolha uma opção')
+                    else:
+                        country = st.text_input(label='País', value=country_value)
+                        compilation = st.text_input('O disco é uma coletânea?', value=compilation_value)
+                    used = st.selectbox('O disco é usado?', options=boolean_options, index=None, placeholder='Escolha uma opção')
+                    heritage = st.selectbox('O disco é herança?', options=boolean_options, index=None, placeholder='Escolha uma opção')
+                    gift = st.selectbox('O disco foi presente?', options=boolean_options, index=None, placeholder='Escolha uma opção')
+                    if gift == 'Sim':
+                        gift_person = st.text_input(label='Foi dado por quem?')
+                    else:
+                        gift_person = ''
+                    shopping_store = st.text_input(label='Loja da compra')
+                    purchase_type = st.selectbox('Tipo de compra', options=purchase_type_options, index=None, placeholder='Escolha uma opção')
+
+                    submit_button = st.form_submit_button(label='Salvar')
+
+                    if submit_button:
+                        new_record_collection = pd.DataFrame(
+                            [
+                                {
+                                    'name': record_name,
+                                    'artist': artist_name,
+                                    'country': country,
+                                    'image_cover': image_cover,
+                                    'duration': duration,
+                                    'qt_lps': qt_lps,
+                                    'release_year': release_year,
+                                    'entry_date': datetime.today().strftime('%d/%m/%Y'),
+                                    'used': True if used == 'Sim' else False,
+                                    'heritage': True if heritage == 'Sim' else False,
+                                    'gift': True if gift == 'Sim' else False,
+                                    'gift_person': gift_person,
+                                    'compilation': compilation,
+                                    'shopping_store': shopping_store,
+                                    'purchase_type': purchase_type
+                                }
+                            ]
+                        )
+
+                        update_collection_catalog = pd.concat([collection_catalog, new_record_collection], ignore_index=True)
+
+                        insert_record_in_collection_and_remove_from_wishlist(update_collection_catalog, wishlist.query(f"name != '{record_name}'"))
+                        st.success('Novo vinil na coleção')
+    else:
+        st.info('Você não tem acesso a essa página')
+        components.html(
+        """
+        <div style="display: flex; justify-content: center;">
+            <iframe
+                src="https://giphy.com/embed/RJadE8FkETsptbI8O8"
+                style="width: 100%; max-width: 480px; aspect-ratio: 480/269;"
+                frameborder="0"
+                allowfullscreen>
+            </iframe>
+        </div>
+        """,
+        height=280,
+        scrolling=False
+    )
