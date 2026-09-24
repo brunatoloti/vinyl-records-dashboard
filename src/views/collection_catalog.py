@@ -327,51 +327,91 @@ with tab2:
         chart6.update_xaxes(title_text='')
         st.plotly_chart(chart6)
 
-    entry_by_date = result[['name', 'entry_date']].copy()
-    entry_by_date['entry_date'] = pd.to_datetime(entry_by_date['entry_date'], format='%d/%m/%Y', errors='coerce')
-    entry_by_date = entry_by_date.dropna(subset=['entry_date'])
+    entry_by_date = result[["name", "entry_date"]].copy()
+    entry_by_date["entry_date"] = pd.to_datetime(entry_by_date["entry_date"], format="%d/%m/%Y", errors="coerce")
+    entry_by_date = entry_by_date.dropna(subset=["entry_date"])
     entry_by_date = (
-        entry_by_date.groupby('entry_date').agg(
-                records=(
-                    'name',
-                    lambda values: '<br>'.join(
-                        sorted(values.dropna().astype(str))
+        entry_by_date
+        .groupby("entry_date")
+        .agg(
+            records=(
+                "name",
+                lambda values: "<br>".join(
+                    f"• {record}"
+                    for record in sorted(
+                        values.dropna().astype(str)
                     )
                 ),
-                QtDiscos=('name', 'count')
-            ).reset_index())
-    start_date = pd.Timestamp(year=entry_by_date['entry_date'].min().year, month=1, day=1)
+            ),
+            QtDiscos=("name", "count"),
+        )
+        .reset_index()
+    )
+
+    start_date = pd.Timestamp(year=entry_by_date["entry_date"].min().year, month=1, day=1)
     end_date = pd.Timestamp.today().normalize()
-    entry_by_date = entry_by_date.set_index('entry_date').reindex(pd.date_range(start_date, end_date, freq='D')).rename_axis('entry_date').reset_index()
-    entry_by_date['QtDiscos'] = entry_by_date['QtDiscos'].fillna(0).astype(int)
-    entry_by_date['records'] = entry_by_date['records'].fillna('')
-    entry_by_date['year'] = entry_by_date['entry_date'].dt.year
-    entry_by_date['entry_date'] = entry_by_date['entry_date'].to_numpy(dtype='datetime64[ns]')
+    entry_by_date = (
+        entry_by_date
+        .set_index("entry_date")
+        .reindex(
+            pd.date_range(
+                start=start_date,
+                end=end_date,
+                freq="D",
+            )
+        )
+        .rename_axis("entry_date")
+        .reset_index()
+    )
+
+    entry_by_date["QtDiscos"] = entry_by_date["QtDiscos"].fillna(0).astype(int)
+    entry_by_date["records"] = entry_by_date["records"].fillna("Nenhum disco")
+    entry_by_date["year"] = entry_by_date["entry_date"].dt.year
+    entry_by_date["entry_date"] = entry_by_date["entry_date"].to_numpy(dtype="datetime64[ns]")
     chart9 = calplot(
         entry_by_date.copy(),
-        x='entry_date',
-        y='QtDiscos',
+        x="entry_date",
+        y="QtDiscos",
+        text="records",
         cmap_min=0,
         cmap_max=5,
-        name='Quantidade',
-        colorscale='reds'
+        name="Quantidade",
+        colorscale="reds",
     )
+
     for trace in chart9.data:
         if trace.type == "heatmap":
             trace.hovertemplate = (
                 "<b>Data:</b> %{customdata[0]}<br>"
-                "<b>Quantidade:</b> %{z}"
+                "<b>Quantidade:</b> %{z}<br>"
+                "<b>Discos:</b><br>%{text}"
                 "<extra></extra>"
             )
-    dd = {'title': {'text': 'Histórico de aquisição de discos'}}
-    j = 1
-    years_df = result.sort_values('year')['year'].astype('int').unique()
-    all_years = list(range(min(years_df), max(years_df) + 1))
-    for i in all_years:
-        dd.update({f'yaxis{j}': {'title': str(i), 'ticktext': ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab', 'Dom']},
-                   f'xaxis{j}': {'ticktext': ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho',
-                                              'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']}})
-        j = j + 1
+
+    dd = {"title": {"text": "Histórico de aquisição de discos"}}
+
+    years_df = result.sort_values("year")["year"].astype(int).unique()
+    all_years = range(min(years_df), max(years_df) + 1)
+
+    for j, year in enumerate(all_years, start=1):
+        dd.update({
+            f"yaxis{j}": {
+                "title": str(year),
+                "ticktext": [
+                    "Seg", "Ter", "Qua", "Qui",
+                    "Sex", "Sab", "Dom",
+                ],
+            },
+            f"xaxis{j}": {
+                "ticktext": [
+                    "Janeiro", "Fevereiro", "Março",
+                    "Abril", "Maio", "Junho",
+                    "Julho", "Agosto", "Setembro",
+                    "Outubro", "Novembro", "Dezembro",
+                ],
+            },
+        })
+
     chart9.update_layout(dd)
     st.plotly_chart(chart9)
 
